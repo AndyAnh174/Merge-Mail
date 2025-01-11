@@ -5,6 +5,7 @@ import logging
 import os
 from io import BytesIO
 from bs4 import BeautifulSoup
+from docx.shared import Pt
 
 class TemplateProcessor:
     def read_csv(self, csv_path):
@@ -23,6 +24,12 @@ class TemplateProcessor:
         html = ""
         for run in paragraph.runs:
             text = run.text
+            # Xử lý đặc biệt cho các ký tự xuống dòng
+            text = text.replace('\n', '<br class="line-break"/>')
+            text = text.replace('\r', '<br class="line-break"/>')
+            # Giữ nguyên khoảng trắng liên tiếp
+            text = text.replace(' ', '&nbsp;')
+            
             if text.strip():
                 style = []
                 if run.bold:
@@ -34,11 +41,9 @@ class TemplateProcessor:
                 
                 # Xử lý màu sắc
                 if hasattr(run._element.rPr, 'color') and run._element.rPr.color is not None:
-                    # Lấy mã màu trực tiếp từ XML
                     color_elem = run._element.rPr.color
                     if color_elem.val:
                         color = color_elem.val
-                        # Nếu là auto thì dùng màu đen
                         if color == "auto":
                             style.append("color: #000000")
                         else:
@@ -52,7 +57,6 @@ class TemplateProcessor:
                     style.append(f"font-family: '{run.font.name}'")
                 
                 if style:
-                    # Thêm !important để đảm bảo styles được áp dụng
                     style = [f"{s} !important" for s in style]
                     html += f'<span style="{"; ".join(style)}">{text}</span>'
                 else:
@@ -60,6 +64,56 @@ class TemplateProcessor:
             else:
                 html += text
         return html
+
+    def _get_paragraph_spacing(self, paragraph):
+        """Lấy thông tin khoảng cách đoạn văn"""
+        try:
+            style = []
+            
+            # Khoảng cách trước đoạn văn
+            if paragraph.paragraph_format.space_before:
+                space_before = paragraph.paragraph_format.space_before.pt
+                style.append(f"margin-top: {space_before}pt")
+            else:
+                style.append("margin-top: 0pt")
+            
+            # Khoảng cách sau đoạn văn
+            if paragraph.paragraph_format.space_after:
+                space_after = paragraph.paragraph_format.space_after.pt
+                style.append(f"margin-bottom: {space_after}pt")
+            else:
+                style.append("margin-bottom: 0pt")
+            
+            # Khoảng cách giữa các dòng
+            if paragraph.paragraph_format.line_spacing:
+                # Xử lý các loại line spacing khác nhau
+                if paragraph.paragraph_format.line_spacing_rule == 1:  # Single
+                    style.append("line-height: 1.15")  # Tăng lên 1.15 để dễ đọc hơn
+                elif paragraph.paragraph_format.line_spacing_rule == 2:  # 1.5 lines
+                    style.append("line-height: 1.5")
+                elif paragraph.paragraph_format.line_spacing_rule == 3:  # Double
+                    style.append("line-height: 2")
+                elif paragraph.paragraph_format.line_spacing_rule == 4:  # At least
+                    min_height = paragraph.paragraph_format.line_spacing.pt
+                    style.append(f"line-height: {min_height}pt")
+                    style.append("min-height: {min_height}pt")
+                elif paragraph.paragraph_format.line_spacing_rule == 5:  # Exactly
+                    exact_height = paragraph.paragraph_format.line_spacing.pt
+                    style.append(f"line-height: {exact_height}pt")
+                else:  # Multiple
+                    if paragraph.paragraph_format.line_spacing:
+                        multiplier = float(paragraph.paragraph_format.line_spacing)
+                        style.append(f"line-height: {multiplier}")
+            else:
+                style.append("line-height: 1.15")  # Mặc định 1.15
+            
+            # Thêm white-space để giữ nguyên khoảng trắng
+            style.append("white-space: pre-wrap")
+            
+            return style
+        except Exception as e:
+            logging.warning(f"Lỗi khi lấy thông tin khoảng cách: {str(e)}")
+            return ["margin-top: 0pt", "margin-bottom: 0pt", "line-height: 1.15", "white-space: pre-wrap"]
 
     def read_template(self, template_path):
         """Đọc file template Word và trả về nội dung HTML và ảnh"""
@@ -73,16 +127,41 @@ class TemplateProcessor:
                 <style>
                     .email-content {
                         font-family: Arial, sans-serif !important;
-                        line-height: 1.6 !important;
                         width: 100% !important;
                         max-width: 800px !important;
                         margin: 0 auto !important;
+                        white-space: pre-wrap !important;
                     }
                     .paragraph {
-                        margin: 10px 0 !important;
+                        margin: 0 !important;
                         padding: 0 !important;
                         width: 100% !important;
                         display: block !important;
+                        word-wrap: break-word !important;
+                        word-break: break-word !important;
+                    }
+                    p {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        white-space: pre-wrap !important;
+                    }
+                    br {
+                        display: block !important;
+                        content: "" !important;
+                        margin-top: 0 !important;
+                    }
+                    br.line-break {
+                        display: block !important;
+                        margin: 12pt 0 !important;
+                        content: "" !important;
+                        height: 1em !important;
+                    }
+                    br.line-break + br.line-break {
+                        display: none !important;
+                    }
+                    .paragraph:empty {
+                        height: 1em !important;
+                        margin: 12pt 0 !important;
                     }
                 </style>
             """)
@@ -90,46 +169,57 @@ class TemplateProcessor:
             content.append('<div class="email-content">')
             
             # Chuyển đổi từng đoạn văn sang HTML
+            prev_was_empty = False
             for paragraph in doc.paragraphs:
                 if paragraph.text.strip():
                     html = self._get_paragraph_style(paragraph)
                     
-                    # Xử lý căn lề
                     try:
-                        # Lấy style trực tiếp từ paragraph
                         style = []
                         
-                        # Xử lý căn lề
+                        # Thêm căn lề
                         if paragraph.alignment is not None:
-                            # Mapping từ WD_ALIGN_PARAGRAPH sang CSS
                             alignment_map = {
-                                0: 'left',     # WD_ALIGN_PARAGRAPH.LEFT
-                                1: 'center',   # WD_ALIGN_PARAGRAPH.CENTER
-                                2: 'right',    # WD_ALIGN_PARAGRAPH.RIGHT
-                                3: 'justify'   # WD_ALIGN_PARAGRAPH.JUSTIFY
+                                0: 'left',
+                                1: 'center',
+                                2: 'right',
+                                3: 'justify'
                             }
-                            # Lấy giá trị số của alignment
                             alignment_value = int(paragraph.alignment)
                             text_align = alignment_map.get(alignment_value, 'left')
                             style.append(f"text-align: {text_align}")
-
-                        # Thêm các style khác nếu cần
+                        
+                        # Thêm khoảng cách
+                        spacing_styles = self._get_paragraph_spacing(paragraph)
+                        style.extend(spacing_styles)
+                        
+                        # Nếu đoạn trước là trống, thêm margin-top
+                        if prev_was_empty:
+                            style.append("margin-top: 12pt")
+                        
+                        # Tạo HTML với đầy đủ style
                         if style:
                             style_str = "; ".join(f"{s} !important" for s in style)
                             html = f'<div class="paragraph" style="{style_str}">{html}</div>'
                         else:
                             html = f'<div class="paragraph">{html}</div>'
+                        
+                        prev_was_empty = False
                             
-                    except Exception as align_err:
-                        logging.warning(f"Lỗi xử lý căn lề: {str(align_err)}")
-                        # Nếu có lỗi, sử dụng div mặc định
+                    except Exception as style_err:
+                        logging.warning(f"Lỗi xử lý style: {str(style_err)}")
                         html = f'<div class="paragraph">{html}</div>'
                     
                     content.append(html)
+                else:
+                    # Thêm đoạn văn trống để giữ khoảng cách
+                    if not prev_was_empty:  # Chỉ thêm nếu đoạn trước không trống
+                        content.append('<div class="paragraph" style="height: 1em !important; margin: 12pt 0 !important;"></div>')
+                        prev_was_empty = True
 
             content.append("</div>")
 
-            # Xử lý ảnh (giữ nguyên phần code cũ)
+            # Xử lý ảnh
             for rel in doc.part.rels.values():
                 if "image" in rel.reltype:
                     try:

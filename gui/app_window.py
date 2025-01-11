@@ -5,6 +5,7 @@ from .frames.file_frame import FileSelectionFrame
 from .frames.email_frame import EmailConfigFrame
 from .frames.progress_frame import ProgressFrame
 from .frames.button_frame import ButtonFrame
+import webbrowser
 
 class AppWindow:
     def __init__(self, controller):
@@ -21,6 +22,7 @@ class AppWindow:
     def setup_fonts(self):
         self.header_font = Font(family="Helvetica", size=12, weight="bold")
         self.normal_font = Font(family="Helvetica", size=10)
+        self.copyright_font = Font(family="Helvetica", size=9)
 
     def setup_styles(self):
         style = ttk.Style()
@@ -73,6 +75,50 @@ class AppWindow:
         
         # Button Frame
         self.button_frame = ButtonFrame(main_frame, self.controller)
+
+        # Copyright Frame
+        copyright_frame = ttk.Frame(main_frame)
+        copyright_frame.pack(fill=tk.X, pady=(20, 0))
+
+        copyright_text = "This product is created by "
+        andy_link = "AndyAnh"
+        copyright_text2 = " and sponsored by "
+        dsc_link = "HCMUTE - Developer Student Club"
+
+        # Create copyright label with clickable links
+        copyright_label = ttk.Label(
+            copyright_frame,
+            text=copyright_text,
+            font=self.copyright_font
+        )
+        copyright_label.pack(side=tk.LEFT)
+
+        andy_label = ttk.Label(
+            copyright_frame,
+            text=andy_link,
+            font=self.copyright_font,
+            foreground='blue',
+            cursor='hand2'
+        )
+        andy_label.pack(side=tk.LEFT)
+        andy_label.bind('<Button-1>', lambda e: webbrowser.open('https://github.com/AndyAnh174'))
+
+        mid_label = ttk.Label(
+            copyright_frame,
+            text=copyright_text2,
+            font=self.copyright_font
+        )
+        mid_label.pack(side=tk.LEFT)
+
+        dsc_label = ttk.Label(
+            copyright_frame,
+            text=dsc_link,
+            font=self.copyright_font,
+            foreground='blue',
+            cursor='hand2'
+        )
+        dsc_label.pack(side=tk.LEFT)
+        dsc_label.bind('<Button-1>', lambda e: webbrowser.open('https://hcmute-dsc.vercel.app/'))
 
     def run(self):
         # Center window

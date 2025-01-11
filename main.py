@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 import webbrowser
 from docx import Document
+import sys
 
 class MergeMailApp:
     def __init__(self):
@@ -27,6 +28,16 @@ class MergeMailApp:
         # Tạo window chính và đóng root window
         self.window = AppWindow(self)
         self.root.withdraw()
+
+        # Thêm xử lý khi đóng cửa sổ
+        self.window.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def on_closing(self):
+        """Xử lý khi đóng cửa sổ"""
+        if messagebox.askokcancel("Thoát", "Bạn có chắc muốn thoát?"):
+            self.window.window.destroy()
+            self.root.quit()
+            sys.exit(0)  # Đảm bảo thoát hoàn toàn
 
     def run(self):
         self.window.run()
