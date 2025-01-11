@@ -42,4 +42,4 @@ Nếu gặp lỗi, vui lòng:
 2. Liên hệ hỗ trợ qua email: hovietanh147@gmail.com
 
 ## License
-Copyright © 2024. All rights reserved.
+Copyright © 2025. All rights reserved.
